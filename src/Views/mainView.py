@@ -1,5 +1,7 @@
 import sys
+import pandas as pd
 import os
+import dbf
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QDateEdit, QPushButton,
@@ -21,6 +23,7 @@ class MainWindow(QWidget):
         
         # Variable para rastrear visibilidad de filtros
         self.filtros_visibles = False
+        self.dataframeTabla = None
 
         self.init_ui()
 
@@ -110,25 +113,84 @@ class MainWindow(QWidget):
             self.widget_filtros.hide()
 
     def cargar_datos_ejemplo(self):
-        datos = [
-            ("001", "R-100", "Juan Pérez", "2025-04-22"),
-            ("002", "R-101", "María García", "2025-04-21"),
-        ]
-        self.tabla.setRowCount(len(datos))
-        for fila, (factura, remito, titular, fecha) in enumerate(datos):
-            self.tabla.setItem(fila, 0, QTableWidgetItem(factura))
-            self.tabla.setItem(fila, 1, QTableWidgetItem(remito))
-            self.tabla.setItem(fila, 2, QTableWidgetItem(titular))
-            self.tabla.setItem(fila, 3, QTableWidgetItem(fecha))
+        # Guardar en DBF
+        self.datamoto_path = "D:/tiempo/vtiempo/GESTION/MOTO1718/DATAMOTO.dbf"
+        self.datamoto_path = os.path.normpath(self.datamoto_path)
+        self.datatitu_path = "D:/tiempo/vtiempo/GESTION/MOTO1718/DATATITU.dbf"
+        self.datatitu_path = os.path.normpath(self.datatitu_path)
+
+        if not os.path.exists(self.datamoto_path) or not os.path.exists(self.datatitu_path):
+            # Crear DBF si no existe
+            self.crear_dbf(self.datamoto_path)
+            self.crear_dbf(self.datatitu_path)
+        
+        self.tabla_registros = dbf.Table(self.datamoto_path)
+        self.tabla_registros.open(mode=dbf.READ_ONLY)
+        self.tabla_titular = dbf.Table(self.datatitu_path)
+        self.tabla_titular.open(mode=dbf.READ_ONLY)
+
+        # Limpiar tabla antes de cargar datos
+        self.tabla.setRowCount(0)
+        self.tabla.setColumnCount(4)
+        self.tabla.setHorizontalHeaderLabels(["Nroº de chasis", "Modelo", "Titular", "Nroº de Remito","Fecha"])
+
+        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tabla.setSelectionMode(QTableWidget.SingleSelection)
+
+        self.dataframeTabla = pd.DataFrame(columns=["Nroº de chasis", "Modelo", "Titular", "Nroº de Remito","Fecha"])
+        self.dataframeTabla["Nroº de chasis"] = [registro.NROCHASIS for registro in self.tabla_registros]
+        
+        for nroChasis in self.dataframeTabla["Nroº de chasis"]:
+            # Obtener el modelo correspondiente en la tabla de registros (DBF no tiene atributo query)
+            registroModelo = self.tabla_registros['MODELO'].query(f"NROCHASIS == '{nroChasis}'")
+            if not registroModelo.empty:
+                # Agregar el modelo a la tabla de datos
+                self.dataframeTabla.loc[self.dataframeTabla["Nroº de chasis"] == nroChasis, "Modelo"] = registroModelo.MODELO.values[0]
+            # Obtener el registro correspondiente en la tabla de titulares
+            registroTitular = self.tabla_titular.query(f"NROCHASIS == '{nroChasis}'")
+            if not registroTitular.empty:
+                # Agregar el registro a la tabla de datos
+                self.dataframeTabla.loc[self.dataframeTabla["Nroº de chasis"] == nroChasis, "Titular"] = registroTitular.TITULAR.values[0]
+            else:
+                # Si no se encuentra el registro, asignar un valor vacío
+                self.dataframeTabla.loc[self.dataframeTabla["Nroº de chasis"] == nroChasis, "Titular"] = ""
+            #Obtener el remito de entrega correspondiente en la tabla de titulares
+            registroRemito = self.tabla_titular.query(f"NROCHASIS == '{nroChasis}'")
+            if not registroRemito.empty:
+                # Agregar el remito a la tabla de datos
+                self.dataframeTabla.loc[self.dataframeTabla["Nroº de chasis"] == nroChasis, "Nroº de Remito"] = registroRemito.NROREMITO.values[0]
+            else:
+                # Si no se encuentra el registro, asignar un valor vacío
+                self.dataframeTabla.loc[self.dataframeTabla["Nroº de chasis"] == nroChasis, "Nroº de Remito"] = 'Sin Remito de entrega'
+            # Obtener la fecha de entrega correspondiente en la tabla de titulares
+            registroFecha = self.tabla_titular.query(f"NROCHASIS == '{nroChasis}'")
+            if not registroFecha.empty:
+                # Agregar la fecha a la tabla de datos
+                self.dataframeTabla.loc[self.dataframeTabla["Nroº de chasis"] == nroChasis, "Fecha"] = registroFecha.FECHREMITO.values[0]
+            else:
+                # Si no se encuentra el registro, asignar un valor vacío
+                self.dataframeTabla.loc[self.dataframeTabla["Nroº de chasis"] == nroChasis, "Fecha"] = ""
+
+        # Agregar filas desde el DataFrame
+        for i, row in self.dataframeTabla.iterrows():
+            position = self.tabla.rowCount()
+            self.tabla.insertRow(position)
+            
+            self.tabla.setItem(position, 0, QTableWidgetItem(str(row['Nroº de chasis'])))
+            self.tabla.setItem(position, 1, QTableWidgetItem(str(row['Modelo'])))
+            self.tabla.setItem(position, 2, QTableWidgetItem(str(row['Titular'])))
+            self.tabla.setItem(position, 3, QTableWidgetItem(str(row['Nroº de Remito'])))
+            self.tabla.setItem(position, 4, QTableWidgetItem(str(row['Fecha'])))
+    
+        # Ajustar tamaño de columnas
+        self.tabla.resizeColumnsToContents()
+
 
     def agregar_registro(self):
         dialogo = VentanaAgregarRegistro(self)
-        if dialogo.exec_() == QDialog.Accepted:
-            datos = dialogo.datos_nuevos
-            fila = self.tabla.rowCount()
-            self.tabla.insertRow(fila)
-            for i, dato in enumerate(datos):
-                self.tabla.setItem(fila, i, QTableWidgetItem(dato))
+        dialogo.exec_()
+        
 
     def modificar_registro(self):
         fila = self.tabla.currentRow()
