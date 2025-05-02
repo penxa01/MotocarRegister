@@ -5,11 +5,13 @@ import dbf
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QDateEdit, QPushButton,
-    QTableWidget, QTableWidgetItem, QMessageBox, QDialog
+    QTableWidget, QTableWidgetItem, QMessageBox, QDialog, QHeaderView   
 )
 from PyQt5.QtCore import Qt, QDate
 import PyQt5.QtGui as Gui
 from controllers.MotoRegister import VentanaAgregarRegistro
+from controllers.printer import dibujar_contenido
+from PyQt5.QtPrintSupport import QPrinter, QPrintPreviewDialog
 
 
 class MainWindow(QWidget):
@@ -24,6 +26,8 @@ class MainWindow(QWidget):
         # Variable para rastrear visibilidad de filtros
         self.filtros_visibles = False
         self.dataframeTabla = None
+        self.campos = ["Nroº de chasis",'Modelo', "Remito", "Titular", "Fecha"]
+        self.filtros = []
 
         self.init_ui()
 
@@ -37,8 +41,16 @@ class MainWindow(QWidget):
         etiqueta_imagen.setAlignment(Qt.AlignCenter)
         etiqueta_imagen.setScaledContents(True)
         etiqueta_imagen.setMaximumHeight(150)
+        
+        # boton de imprimir antes del la foto
+        self.btn_imprimir = QPushButton("Imprimir")
+        self.btn_imprimir.setFixedSize(100, 20)
+        layout_principal.addWidget(self.btn_imprimir)
+        
         layout_principal.addWidget(etiqueta_imagen)
 
+        # Cargar datos de ejemplo
+        self.cargar_datos_ejemplo()
         # Layout para botones de acción (PRIMERO)
         layout_botones = QHBoxLayout()
         self.boton_agregar = QPushButton("Agregar registro de moto")
@@ -46,6 +58,7 @@ class MainWindow(QWidget):
         self.boton_eliminar = QPushButton("Eliminar")
         self.btn_mostrar_filtros = QPushButton("Filtrar")  # Botón para mostrar/ocultar filtros
 
+        self.btn_imprimir.clicked.connect(self.imprimir_documento)
         self.boton_agregar.clicked.connect(self.agregar_registro)
         self.boton_modificar.clicked.connect(self.modificar_registro)
         self.boton_eliminar.clicked.connect(self.eliminar_registro)
@@ -57,21 +70,43 @@ class MainWindow(QWidget):
         layout_botones.addWidget(self.btn_mostrar_filtros)
 
         layout_principal.addLayout(layout_botones)
+        # Tabla
+        self.tabla = QTableWidget()
+        self.tabla.setColumnCount(4)
+        self.tabla.setHorizontalHeaderLabels(["Nro de chasis",'Modelo', "Remito", "Titular", "Fecha"])
+        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tabla.setSelectionMode(QTableWidget.SingleSelection)
+
+        self.tabla.doubleClicked.connect(self.modificar_registro)
+
+        layout_principal.addWidget(self.tabla)
+
+        self.setLayout(layout_principal)
 
         # Widget contenedor para los filtros (DESPUÉS de los botones de acción)
         self.widget_filtros = QWidget()
         layout_filtros = QHBoxLayout(self.widget_filtros)
 
         # Configuración de los filtros
-        self.input_factura = QLineEdit()
+        self.input_chasis = QLineEdit()
+        self.input_chasis.textChanged.connect(self.applyFilter)
+        self.input_modelo = QLineEdit()
+        self.input_modelo.textChanged.connect(self.applyFilter)  # Conectar el evento de texto cambiado
         self.input_remito = QLineEdit()
+        self.input_remito.textChanged.connect(self.applyFilter)  # Conectar el evento de texto cambiado
         self.input_titular = QLineEdit()
+        self.input_titular.textChanged.connect(self.applyFilter)  # Conectar el evento de texto cambiado
         self.input_fecha = QDateEdit()
+        self.input_fecha.setDisplayFormat("dd/MM/yyyy")
+        self.input_fecha.dateChanged.connect(self.applyFilter)  # Conectar el evento de texto cambiado
         self.input_fecha.setCalendarPopup(True)
         self.input_fecha.setDate(QDate.currentDate())
 
-        layout_filtros.addWidget(QLabel("Factura:"))
-        layout_filtros.addWidget(self.input_factura)
+        layout_filtros.addWidget(QLabel("Nro de chasis:"))
+        layout_filtros.addWidget(self.input_chasis)
+        layout_filtros.addWidget(QLabel("Modelo:"))
+        layout_filtros.addWidget(self.input_modelo)
         layout_filtros.addWidget(QLabel("Remito:"))
         layout_filtros.addWidget(self.input_remito)
         layout_filtros.addWidget(QLabel("Titular:"))
@@ -85,22 +120,7 @@ class MainWindow(QWidget):
         # Ocultar filtros inicialmente
         self.widget_filtros.hide()
 
-        # Tabla
-        self.tabla = QTableWidget()
-        self.tabla.setColumnCount(4)
-        self.tabla.setHorizontalHeaderLabels(["Factura", "Remito", "Titular", "Fecha"])
-        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
-        self.tabla.setSelectionMode(QTableWidget.SingleSelection)
-
-        self.tabla.doubleClicked.connect(self.modificar_registro)
-
-        layout_principal.addWidget(self.tabla)
-
-        self.setLayout(layout_principal)
-
-        # Datos de ejemplo
-        self.cargar_datos_ejemplo()
+        self.update_table(self.dataframeTabla)
 
     def toggle_filtros(self):
         """Alterna la visibilidad del widget de filtros"""
@@ -113,78 +133,64 @@ class MainWindow(QWidget):
             self.widget_filtros.hide()
 
     def cargar_datos_ejemplo(self):
-        # Guardar en DBF
-        self.datamoto_path = "D:/tiempo/vtiempo/GESTION/MOTO1718/DATAMOTO.dbf"
-        self.datamoto_path = os.path.normpath(self.datamoto_path)
-        self.datatitu_path = "D:/tiempo/vtiempo/GESTION/MOTO1718/DATATITU.dbf"
-        self.datatitu_path = os.path.normpath(self.datatitu_path)
+        # Rutas normalizadas
+        self.datamoto_path = os.path.normpath("D:/tiempo/vtiempo/GESTION/MOTO1718/DATAMOTO.dbf")
+        self.datatitu_path = os.path.normpath("D:/tiempo/vtiempo/GESTION/MOTO1718/DATATITU.dbf")
 
-        if not os.path.exists(self.datamoto_path) or not os.path.exists(self.datatitu_path):
-            # Crear DBF si no existe
+        # Crear DBF si no existen
+        if not os.path.exists(self.datamoto_path):
             self.crear_dbf(self.datamoto_path)
+        if not os.path.exists(self.datatitu_path):
             self.crear_dbf(self.datatitu_path)
-        
+
+        # Abrir tablas DBF
         self.tabla_registros = dbf.Table(self.datamoto_path)
         self.tabla_registros.open(mode=dbf.READ_ONLY)
         self.tabla_titular = dbf.Table(self.datatitu_path)
         self.tabla_titular.open(mode=dbf.READ_ONLY)
 
-        # Limpiar tabla antes de cargar datos
-        self.tabla.setRowCount(0)
-        self.tabla.setColumnCount(4)
-        self.tabla.setHorizontalHeaderLabels(["Nroº de chasis", "Modelo", "Titular", "Nroº de Remito","Fecha"])
+        # Extraer datos manualmente campo por campo
+        registros = []
+        for r in self.tabla_registros:
+            try:
+                registros.append({
+                    "NROCHASIS": r.NROCHASIS.strip() if r.NROCHASIS else "",
+                    "MODELO": r.MODELO.strip() if r.MODELO else "",
+                })
+            except Exception as e:
+                print(f"Error leyendo registro: {e}")
 
-        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
-        self.tabla.setSelectionMode(QTableWidget.SingleSelection)
+        titulares = []
+        for t in self.tabla_titular:
+            try:
+                titulares.append({
+                    "NROCHASIS": t.NROCHASIS.strip() if t.NROCHASIS else "",
+                    "TITULAR1": t.TITULAR1.strip() if t.TITULAR1 else "",
+                    "NROREMITO": t.NROREMITO if t.NROREMITO else "",
+                    "FECHAREMIT": t.FECHAREMIT if t.FECHAREMIT else "",
+                })
+            except Exception as e:
+                print(f"Error leyendo titular: {e}")
 
-        self.dataframeTabla = pd.DataFrame(columns=["Nroº de chasis", "Modelo", "Titular", "Nroº de Remito","Fecha"])
-        self.dataframeTabla["Nroº de chasis"] = [registro.NROCHASIS for registro in self.tabla_registros]
-        
-        for nroChasis in self.dataframeTabla["Nroº de chasis"]:
-            # Obtener el modelo correspondiente en la tabla de registros (DBF no tiene atributo query)
-            registroModelo = self.tabla_registros['MODELO'].query(f"NROCHASIS == '{nroChasis}'")
-            if not registroModelo.empty:
-                # Agregar el modelo a la tabla de datos
-                self.dataframeTabla.loc[self.dataframeTabla["Nroº de chasis"] == nroChasis, "Modelo"] = registroModelo.MODELO.values[0]
-            # Obtener el registro correspondiente en la tabla de titulares
-            registroTitular = self.tabla_titular.query(f"NROCHASIS == '{nroChasis}'")
-            if not registroTitular.empty:
-                # Agregar el registro a la tabla de datos
-                self.dataframeTabla.loc[self.dataframeTabla["Nroº de chasis"] == nroChasis, "Titular"] = registroTitular.TITULAR.values[0]
-            else:
-                # Si no se encuentra el registro, asignar un valor vacío
-                self.dataframeTabla.loc[self.dataframeTabla["Nroº de chasis"] == nroChasis, "Titular"] = ""
-            #Obtener el remito de entrega correspondiente en la tabla de titulares
-            registroRemito = self.tabla_titular.query(f"NROCHASIS == '{nroChasis}'")
-            if not registroRemito.empty:
-                # Agregar el remito a la tabla de datos
-                self.dataframeTabla.loc[self.dataframeTabla["Nroº de chasis"] == nroChasis, "Nroº de Remito"] = registroRemito.NROREMITO.values[0]
-            else:
-                # Si no se encuentra el registro, asignar un valor vacío
-                self.dataframeTabla.loc[self.dataframeTabla["Nroº de chasis"] == nroChasis, "Nroº de Remito"] = 'Sin Remito de entrega'
-            # Obtener la fecha de entrega correspondiente en la tabla de titulares
-            registroFecha = self.tabla_titular.query(f"NROCHASIS == '{nroChasis}'")
-            if not registroFecha.empty:
-                # Agregar la fecha a la tabla de datos
-                self.dataframeTabla.loc[self.dataframeTabla["Nroº de chasis"] == nroChasis, "Fecha"] = registroFecha.FECHREMITO.values[0]
-            else:
-                # Si no se encuentra el registro, asignar un valor vacío
-                self.dataframeTabla.loc[self.dataframeTabla["Nroº de chasis"] == nroChasis, "Fecha"] = ""
+        datos_registros = pd.DataFrame(registros)
+        datos_titular = pd.DataFrame(titulares)
 
-        # Agregar filas desde el DataFrame
+        # Crear DataFrame para tabla
+        self.dataframeTabla = datos_registros.copy()
+        self.dataframeTabla.rename(columns={"NROCHASIS": "Nroº de chasis", "MODELO": "Modelo"}, inplace=True)
+        self.dataframeTabla["Titular"] = ""
+        self.dataframeTabla["Nroº de Remito"] = ""
+        self.dataframeTabla["Fecha"] = ""
+
         for i, row in self.dataframeTabla.iterrows():
-            position = self.tabla.rowCount()
-            self.tabla.insertRow(position)
-            
-            self.tabla.setItem(position, 0, QTableWidgetItem(str(row['Nroº de chasis'])))
-            self.tabla.setItem(position, 1, QTableWidgetItem(str(row['Modelo'])))
-            self.tabla.setItem(position, 2, QTableWidgetItem(str(row['Titular'])))
-            self.tabla.setItem(position, 3, QTableWidgetItem(str(row['Nroº de Remito'])))
-            self.tabla.setItem(position, 4, QTableWidgetItem(str(row['Fecha'])))
-    
-        # Ajustar tamaño de columnas
-        self.tabla.resizeColumnsToContents()
+            nroChasis = row["Nroº de chasis"]
+            titular_info = datos_titular[datos_titular["NROCHASIS"] == nroChasis]
+            if not titular_info.empty:
+                self.dataframeTabla.at[i, "Titular"] = titular_info["TITULAR1"].values[0]
+                self.dataframeTabla.at[i, "Nroº de Remito"] = titular_info["NROREMITO"].values[0]
+                self.dataframeTabla.at[i, "Fecha"] = titular_info["FECHAREMIT"].values[0]
+            else:
+                self.dataframeTabla.at[i, "Nroº de Remito"] = "Sin Remito de entrega"
 
 
     def agregar_registro(self):
@@ -212,3 +218,63 @@ class MainWindow(QWidget):
                 self.tabla.removeRow(fila)
         else:
             QMessageBox.warning(self, "Atención", "Seleccioná un registro para eliminar.")
+    
+    def update_table(self,datos):
+        # Preparar tabla visual
+        self.tabla.clear()
+        self.tabla.setRowCount(0)
+        self.tabla.setColumnCount(5)
+        self.tabla.setHorizontalHeaderLabels(["Nroº de chasis", "Modelo", "Titular", "Nroº de Remito", "Fecha"])
+        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tabla.setSelectionMode(QTableWidget.SingleSelection)
+        # Actualiza la tabla con los datos filtrados
+        self.tabla.setRowCount(0)
+        for i, row in datos.iterrows():
+            position = self.tabla.rowCount()
+            self.tabla.insertRow(position)
+            self.tabla.setItem(position, 0, QTableWidgetItem(str(row["Nroº de chasis"])))
+            self.tabla.setItem(position, 1, QTableWidgetItem(str(row["Modelo"])))
+            self.tabla.setItem(position, 2, QTableWidgetItem(str(row["Titular"])))
+            self.tabla.setItem(position, 3, QTableWidgetItem(str(row["Nroº de Remito"])))
+            self.tabla.setItem(position, 4, QTableWidgetItem(str(row["Fecha"])))
+        self.tabla.resizeColumnsToContents()
+        self.tabla.horizontalHeader().setStretchLastSection(True)
+        self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+    
+    def applyFilter(self):
+        chasis = self.input_chasis.text().strip().lower()
+        modelo = self.input_modelo.text().strip().lower()
+        titular = self.input_titular.text().strip().lower()
+        remito = self.input_remito.text().strip().lower()
+        fecha_qdate = self.input_fecha.date()
+        fecha_str = fecha_qdate.toString("yyyy-MM-dd")
+
+        # Normalizar y formatear columna Fecha como string
+        df = self.dataframeTabla.copy()
+        df["Fecha"] = pd.to_datetime(df["Fecha"], errors='coerce').dt.strftime("%Y-%m-%d")
+
+        # Aplicar filtros uno por uno
+        df_filtrado = df[
+            df["Nroº de chasis"].str.lower().str.contains(chasis, na=False) &
+            df["Modelo"].str.lower().str.contains(modelo, na=False) &
+            df["Titular"].str.lower().str.contains(titular, na=False) &
+            df["Nroº de Remito"].astype(str).str.lower().str.contains(remito, na=False)
+        ]
+
+        # Si se seleccionó una fecha distinta al día de hoy, aplicar filtro
+        if fecha_str != QDate.currentDate().toString("yyyy-MM-dd"):
+            df_filtrado = df_filtrado[df_filtrado["Fecha"] == fecha_str]
+
+        self.update_table(df_filtrado)
+    
+
+    def imprimir_documento(self):
+        printer = QPrinter(QPrinter.HighResolution)
+        printer.setPageSize(QPrinter.A4)
+        printer.setOrientation(QPrinter.Portrait)
+        printer.setFullPage(False)
+
+        preview = QPrintPreviewDialog(printer, self)
+        preview.paintRequested.connect(lambda p: dibujar_contenido(p, printer))
+        preview.exec_()
