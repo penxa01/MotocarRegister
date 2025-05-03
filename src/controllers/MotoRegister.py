@@ -116,7 +116,6 @@ class VentanaAgregarRegistro(QDialog):
             QMessageBox.warning(self, "Error al guardar", f"Ocurrió un error al guardar los datos:\n{str(e)}")
             
 
-
     def dbf_fecha(self, texto_fecha):
         from datetime import datetime
         return datetime.strptime(texto_fecha, "%Y%m%d")

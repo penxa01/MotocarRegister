@@ -5,13 +5,16 @@ import dbf
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QDateEdit, QPushButton,
-    QTableWidget, QTableWidgetItem, QMessageBox, QDialog, QHeaderView   
+    QTableWidget, QTableWidgetItem, QMessageBox, QDialog, QHeaderView ,QMenu, QInputDialog
 )
 from PyQt5.QtCore import Qt, QDate
 import PyQt5.QtGui as Gui
 from controllers.MotoRegister import VentanaAgregarRegistro
 from controllers.printer import dibujar_contenido
 from PyQt5.QtPrintSupport import QPrinter, QPrintPreviewDialog
+from controllers.MotoModify import FormularioModificacion
+from controllers.Utils import buscar_moto_por_chasis, modificar_moto_en_dbf
+
 
 
 class MainWindow(QWidget):
@@ -57,16 +60,19 @@ class MainWindow(QWidget):
         self.boton_modificar = QPushButton("Modificar")
         self.boton_eliminar = QPushButton("Eliminar")
         self.btn_mostrar_filtros = QPushButton("Filtrar")  # Botón para mostrar/ocultar filtros
+        self.boton_remitosEntrega = QPushButton("Remitos de entrega")
 
         self.btn_imprimir.clicked.connect(self.imprimir_documento)
         self.boton_agregar.clicked.connect(self.agregar_registro)
-        self.boton_modificar.clicked.connect(self.modificar_registro)
+        self.boton_modificar.clicked.connect(self.modificar_por_boton)
         self.boton_eliminar.clicked.connect(self.eliminar_registro)
         self.btn_mostrar_filtros.clicked.connect(self.toggle_filtros)
+        self.boton_remitosEntrega.clicked.connect(self.mostrar_remitos_entrega)
 
         layout_botones.addWidget(self.boton_agregar)
         layout_botones.addWidget(self.boton_modificar)
         layout_botones.addWidget(self.boton_eliminar)
+        layout_botones.addWidget(self.boton_remitosEntrega)
         layout_botones.addWidget(self.btn_mostrar_filtros)
 
         layout_principal.addLayout(layout_botones)
@@ -77,8 +83,11 @@ class MainWindow(QWidget):
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
         self.tabla.setSelectionMode(QTableWidget.SingleSelection)
+        self.tabla.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tabla.customContextMenuRequested.connect(self.mostrar_menu_contextual)
 
-        self.tabla.doubleClicked.connect(self.modificar_registro)
+
+        
 
         layout_principal.addWidget(self.tabla)
 
@@ -197,14 +206,41 @@ class MainWindow(QWidget):
         dialogo = VentanaAgregarRegistro(self)
         dialogo.exec_()
         
+    def modificar_por_boton(self):
+        chasis, ok = QInputDialog.getText(self, "Modificar", "Ingrese número de chasis:")
+        if ok and chasis:
+            datos = buscar_moto_por_chasis(chasis)
+            if datos:
+                self.abrir_formulario_modificacion(datos)
+            else:
+                QMessageBox.warning(self, "No encontrado", "No se encontró ese número de chasis.")
+    
+    def mostrar_menu_contextual(self, posicion):
+        menu = QMenu()
+        accion_modificar = menu.addAction("Modificar registro")
+        accion = menu.exec_(self.tabla.viewport().mapToGlobal(posicion))
+        if accion == accion_modificar:
+            self.modificar_desde_tabla()
 
-    def modificar_registro(self):
+    def modificar_desde_tabla(self):
         fila = self.tabla.currentRow()
-        if fila >= 0:
-            factura = self.tabla.item(fila, 0).text()
-            QMessageBox.information(self, "Modificar", f"Modificar registro con factura {factura}.")
+        chasis = self.tabla.item(fila, 0).text()
+        datos = buscar_moto_por_chasis(chasis)
+        if datos:
+            self.abrir_formulario_modificacion(datos)
         else:
-            QMessageBox.warning(self, "Atención", "Seleccioná un registro para modificar.")
+            QMessageBox.warning(self, "No encontrado", "No se encontró ese número de chasis.")
+    
+    def abrir_formulario_modificacion(self, datos):
+        def callback_guardar(nuevos_datos):
+            modificar_moto_en_dbf(nuevos_datos)
+            QMessageBox.information(self, "Éxito", "Moto modificada con éxito.")
+            self.cargar_datos_ejemplo()
+            self.update_table(self.dataframeTabla)  # O refrescar tabla si lo tenés
+
+        form = FormularioModificacion(datos, callback_guardar)
+        form.exec_()
+
 
     def eliminar_registro(self):
         fila = self.tabla.currentRow()
@@ -278,3 +314,7 @@ class MainWindow(QWidget):
         preview = QPrintPreviewDialog(printer, self)
         preview.paintRequested.connect(lambda p: dibujar_contenido(p, printer))
         preview.exec_()
+
+    def mostrar_remitos_entrega(self):
+        # Abre ventana que solicite nro de chasis, nro de remito y punto de venta
+        print("Mostrar remitos de entrega")
