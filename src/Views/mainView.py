@@ -13,7 +13,7 @@ from controllers.MotoRegister import VentanaAgregarRegistro
 from controllers.printer import dibujar_contenido
 from PyQt5.QtPrintSupport import QPrinter, QPrintPreviewDialog
 from controllers.MotoModify import FormularioModificacion
-from controllers.Utils import buscar_moto_por_chasis, modificar_moto_en_dbf
+from controllers.Utils import buscar_moto_por_chasis, modificar_moto_en_dbf, buscar_remito_entrega
 
 
 
@@ -67,7 +67,7 @@ class MainWindow(QWidget):
         self.boton_modificar.clicked.connect(self.modificar_por_boton)
         self.boton_eliminar.clicked.connect(self.eliminar_registro)
         self.btn_mostrar_filtros.clicked.connect(self.toggle_filtros)
-        self.boton_remitosEntrega.clicked.connect(self.mostrar_remitos_entrega)
+        self.boton_remitosEntrega.clicked.connect(self.remitos_entrega)
 
         layout_botones.addWidget(self.boton_agregar)
         layout_botones.addWidget(self.boton_modificar)
@@ -305,16 +305,50 @@ class MainWindow(QWidget):
         self.update_table(df_filtrado)
     
 
+
     def imprimir_documento(self):
         printer = QPrinter(QPrinter.HighResolution)
         printer.setPageSize(QPrinter.A4)
         printer.setOrientation(QPrinter.Portrait)
         printer.setFullPage(False)
 
-        preview = QPrintPreviewDialog(printer, self)
-        preview.paintRequested.connect(lambda p: dibujar_contenido(p, printer))
-        preview.exec_()
+        painter = Gui.QPainter()
+        if painter.begin(printer):
+            dibujar_contenido(painter, printer)
+            painter.end()
 
-    def mostrar_remitos_entrega(self):
-        # Abre ventana que solicite nro de chasis, nro de remito y punto de venta
-        print("Mostrar remitos de entrega")
+
+    def remitos_entrega(self):
+
+        dialogo = QDialog(self)
+        dialogo.setWindowTitle("Buscar Remito de Entrega")
+        dialogo.setFixedWidth(300)
+
+        layout = QVBoxLayout()
+
+        input_chasis = QLineEdit()
+        input_remito = QLineEdit()
+        input_punto = QLineEdit()
+
+        layout.addWidget(QLabel("Nro de Chasis:"))
+        layout.addWidget(input_chasis)
+
+        layout.addWidget(QLabel("Nro de Remito:"))
+        layout.addWidget(input_remito)
+
+        layout.addWidget(QLabel("Punto de Venta:"))
+        layout.addWidget(input_punto)
+
+        boton_buscar = QPushButton("Buscar")
+
+        def al_hacer_click():
+            chasis = input_chasis.text().strip()
+            remito = int(input_remito.text())
+            punto = int(input_punto.text())
+            buscar_remito_entrega(chasis, punto, remito)
+
+        boton_buscar.clicked.connect(al_hacer_click)
+        layout.addWidget(boton_buscar)
+
+        dialogo.setLayout(layout)
+        dialogo.exec_()

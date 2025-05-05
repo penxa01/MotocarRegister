@@ -2,18 +2,17 @@ from PyQt5.QtPrintSupport import QPrinter, QPrintDialog
 from PyQt5.QtGui import QPainter, QFont
 
 
-def dibujar_contenido(self, printer):
-    painter = QPainter(printer)
-
-    # Fuente
+def dibujar_contenido(painter, printer):
     painter.setFont(QFont("Arial", 12))
 
-    painter.drawText(500, 1000, "Cliente: Juan Pérez")
-    painter.drawText(500, 1500, "Domicio: Calle Falsa 123")
-    painter.drawText(2000, 1500, "Documento: 123456789")
-    painter.drawText(2000, 2000, "Detalle: Modelo\n Marca motor\n Marca Chasis\n Certificado Nro \n Sin uso y sin faltantes")
+    painter.drawText(3200, 1005, ": 15/15/2025")
+    painter.drawText(835, 1528, "Juan Pérez")
+    painter.drawText(835, 1710, "Calle Falsa 123")
+    painter.drawText(2667, 1807, ": 123456789")
+    painter.drawText(2350, 2800, "Detalle: Modelo\n")
+    painter.drawText(2350, 2900, "Marca motor: Hotwheels\n")
+    painter.drawText(2350, 3000, "Marca chasis: Ejemplo\n")
+    painter.drawText(2350, 3100, "Certificado Nro:15965dfdsfd/ 152515 \n")
+    painter.drawText(2350, 3200, "Sin uso y sin faltantes\n")
 
-    # Dibujar rectángulo por ejemplo
     painter.drawRect(90, 80, 400, 300)
-
-    painter.end()
