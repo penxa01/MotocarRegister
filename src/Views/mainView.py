@@ -13,7 +13,7 @@ from controllers.MotoRegister import VentanaAgregarRegistro
 from controllers.printer import dibujar_contenido
 from PyQt5.QtPrintSupport import QPrinter, QPrintPreviewDialog
 from controllers.MotoModify import FormularioModificacion
-from controllers.Utils import buscar_moto_por_chasis, modificar_moto_en_dbf, buscar_remito_entrega
+from controllers.Utils import buscar_moto_por_chasis, modificar_moto_en_dbf, buscar_remito_entrega, buscar_moto_titu_por_chasis
 
 
 
@@ -62,7 +62,7 @@ class MainWindow(QWidget):
         self.btn_mostrar_filtros = QPushButton("Filtrar")  # Botón para mostrar/ocultar filtros
         self.boton_remitosEntrega = QPushButton("Remitos de entrega")
 
-        self.btn_imprimir.clicked.connect(self.imprimir_documento)
+        self.btn_imprimir.clicked.connect(self.imprimir_documento_btn)
         self.boton_agregar.clicked.connect(self.agregar_registro)
         self.boton_modificar.clicked.connect(self.modificar_por_boton)
         self.boton_eliminar.clicked.connect(self.eliminar_registro)
@@ -218,12 +218,17 @@ class MainWindow(QWidget):
     def mostrar_menu_contextual(self, posicion):
         menu = QMenu()
         accion_modificar = menu.addAction("Modificar registro")
+        accion_eliminar = menu.addAction("Eliminar registro")
+        accion_imprimir = menu.addAction("Imprimir Remito")
         accion = menu.exec_(self.tabla.viewport().mapToGlobal(posicion))
+        if accion == accion_imprimir:
+            self.imprimir_documento_tabla(self.tabla.currentRow())
+        if accion == accion_eliminar:
+            self.eliminar_registro_tabla(self.tabla.currentRow())
         if accion == accion_modificar:
-            self.modificar_desde_tabla()
+            self.modificar_desde_tabla(self.tabla.currentRow())
 
-    def modificar_desde_tabla(self):
-        fila = self.tabla.currentRow()
+    def modificar_desde_tabla(self,fila):
         chasis = self.tabla.item(fila, 0).text()
         datos = buscar_moto_por_chasis(chasis)
         if datos:
@@ -304,9 +309,74 @@ class MainWindow(QWidget):
 
         self.update_table(df_filtrado)
     
+    def imprimir_documento_btn(self):
+        dialogo = QDialog(self)
+        dialogo.setWindowTitle("Buscar Remito de Entrega")
+        dialogo.setFixedWidth(300)
 
+        layout = QVBoxLayout()
 
-    def imprimir_documento(self):
+        input_chasis = QLineEdit()
+        input_remito = QLineEdit()
+        input_punto = QLineEdit()
+
+        layout.addWidget(QLabel("Nro de Chasis:"))
+        layout.addWidget(input_chasis)
+
+        layout.addWidget(QLabel("Nro de Remito:"))
+        layout.addWidget(input_remito)
+
+        layout.addWidget(QLabel("Punto de Venta:"))
+        layout.addWidget(input_punto)
+
+        boton_buscar = QPushButton("Imprimir")
+
+        def al_hacer_click():
+            chasis = input_chasis.text().strip()
+            remito = int(input_remito.text())
+            punto = int(input_punto.text())
+            self.imprimir_por_boton(chasis, remito, punto)   
+
+        boton_buscar.clicked.connect(al_hacer_click)
+        layout.addWidget(boton_buscar)
+
+        dialogo.setLayout(layout)
+        dialogo.exec_()
+
+    def imprimir_documento_tabla(self, fila):
+        chasis = self.tabla.item(fila, 0).text()
+        datos_titular = buscar_moto_titu_por_chasis(chasis)
+        datos_moto = buscar_moto_por_chasis(chasis)
+        if datos_titular and datos_moto:
+            self.imprimir_documento(datos_moto,datos_titular)
+        else:
+            QMessageBox.warning(self, "No encontrado", "No se encontró ese número de chasis.")
+    
+    def imprimir_por_boton(self,nrochasis, remitoEntrega, ptoventa):
+        titular = buscar_moto_titu_por_chasis(nrochasis)
+        moto = buscar_moto_por_chasis(nrochasis)
+        print(titular['NROCHASIS'].strip())
+        print(nrochasis)
+        print(titular['NROREMITO'])
+        print(remitoEntrega)
+        print(titular['PTOREMITO'])
+        print(ptoventa)
+        if titular['TITULAR1'] is None or titular['TITULAR1'] == "":
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Warning)
+            msg.setWindowTitle("Error")
+            msg.setText("El chasis ingresado no tiene titular asociado.")
+            msg.exec_()
+        elif titular['NROCHASIS'].strip() == nrochasis and titular['NROREMITO'] == remitoEntrega and int(titular['PTOREMITO']) == ptoventa:
+            self.imprimir_documento(moto,titular)
+        else:
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Warning)
+            msg.setWindowTitle("Error")
+            msg.setText("Los datos son erroneos")
+            msg.exec_()
+
+    def imprimir_documento(self,moto,titular):
         printer = QPrinter(QPrinter.HighResolution)
         printer.setPageSize(QPrinter.A4)
         printer.setOrientation(QPrinter.Portrait)
@@ -314,9 +384,8 @@ class MainWindow(QWidget):
 
         painter = Gui.QPainter()
         if painter.begin(printer):
-            dibujar_contenido(painter, printer)
+            dibujar_contenido(painter, printer,moto,titular)
             painter.end()
-
 
     def remitos_entrega(self):
 

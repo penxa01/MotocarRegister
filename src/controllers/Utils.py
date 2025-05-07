@@ -2,6 +2,11 @@ from datetime import datetime
 import os
 import dbf
 from controllers.MotoRemito import mostrar_datos_titulares
+from dbfread import DBF
+#import para QwarningBox aqui
+from PyQt5.QtWidgets import QMessageBox
+
+
 
 def modificar_moto_en_dbf(nuevos_datos):
     import dbf
@@ -28,17 +33,18 @@ def modificar_moto_en_dbf(nuevos_datos):
 
     db.close()
 
-
-
 def buscar_moto_por_chasis(numero_chasis):
-    from dbfread import DBF
     for registro in DBF("D:/tiempo/vtiempo/GESTION/MOTO1718/DATAMOTO.dbf"):
         if registro["NROCHASIS"].strip() == numero_chasis.strip():
             return dict(registro)
     return None
 
-import dbf
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout
+def buscar_moto_titu_por_chasis(numero_chasis):
+    for registro in DBF("D:/tiempo/vtiempo/GESTION/MOTO1718/DATATITU.dbf"):
+        if registro["NROCHASIS"].strip() == numero_chasis.strip():
+            return dict(registro)
+    return None
+
 
 def buscar_remito_entrega(nrochasis, ptoventa, remitoEntrega):
     # 1. Leer REMITOSX.DBF
