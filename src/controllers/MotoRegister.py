@@ -112,6 +112,8 @@ class VentanaAgregarRegistro(QDialog):
             QMessageBox.information(self, "Éxito", "Moto agregada correctamente.")
             self.accept()
 
+        except ValueError as e:
+            QMessageBox.warning(self, "Error", f"Tipo de dato incorrecto:\n{str(e)}")
         except Exception as e:
             QMessageBox.warning(self, "Error al guardar", f"Ocurrió un error al guardar los datos:\n{str(e)}")
             
